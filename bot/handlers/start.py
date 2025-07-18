@@ -102,8 +102,8 @@ async def video_document_handler(message: Message, state: FSMContext, ):
     
 
 
-
 video_info_cache = {}
+
 @dp.message(F.text.startswith(("https://youtu", "https://www.youtube", "https://www.instagram.com")))
 async def process_link(message: Message, state: FSMContext):
     chat_id = message.chat.id
@@ -114,6 +114,7 @@ async def process_link(message: Message, state: FSMContext):
     ydl_opts = {
         'quiet': True,
         'noplaylist': True,
+        'cookies': 'instagram_cookies.txt',  # ← cookie qo‘shildi
     }
 
     try:
@@ -128,47 +129,38 @@ async def process_link(message: Message, state: FSMContext):
         added_res = set()
 
         for f in formats:
-            if not f.get("format_id"):
-                continue
-
-            # Faqat video (audio emas)
-            if f.get("vcodec") == "none":
+            if not f.get("format_id") or f.get("vcodec") == "none":
                 continue
 
             resolution = f.get('format_note') or f.get('height')
             ext = f.get('ext')
             format_id = f.get('format_id')
 
-            if resolution and ext == 'mp4':
-                # `height` ko'rinishida olishga harakat qilamiz
-                try:
-                    # Masalan: 720, 1080 yoki '720p' bo'lishi mumkin
-                    if isinstance(resolution, str) and 'p' in resolution.lower():
-                        height = int(resolution.lower().replace('p', ''))
-                    else:
-                        height = int(resolution)
-                except (ValueError, TypeError):
-                    continue
+            try:
+                if isinstance(resolution, str) and 'p' in resolution.lower():
+                    height = int(resolution.lower().replace('p', ''))
+                else:
+                    height = int(resolution)
+            except (ValueError, TypeError):
+                continue
 
-                # ❗️Faqat 480 va undan yuqori
-                if height < 480:
-                    continue
+            if height < 480 or ext != 'mp4':
+                continue
 
-                str_res = f"{height}p"
-                if str_res not in added_res:
-                    added_res.add(str_res)
-                    buttons.append([
-                        InlineKeyboardButton(
-                            text=str_res,
-                            callback_data=f"video|{format_id}"
-                        )
-                    ])
-        # Audio variantni ham qo‘shamiz
+            str_res = f"{height}p"
+            if str_res not in added_res:
+                added_res.add(str_res)
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=str_res,
+                        callback_data=f"video|{format_id}"
+                    )
+                ])
+
         buttons.append([
             InlineKeyboardButton(text="🎧 MP3 (audio)", callback_data="audio|bestaudio")
         ])
 
-        # Klaviaturani yaratish
         markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
         await msg.delete()
@@ -183,7 +175,6 @@ async def process_link(message: Message, state: FSMContext):
         print("Format aniqlash xatosi:", e)
 
 video_info_cache = {}  # global cache agar sizda allaqachon bo'lmasa
-
 @dp.callback_query(F.data.startswith(("video|", "audio|")))
 async def download_selected_format(query: CallbackQuery):
     user_id = query.from_user.id
@@ -193,7 +184,7 @@ async def download_selected_format(query: CallbackQuery):
         await query.message.answer("❌ Video ma'lumotlari topilmadi. Qayta YouTube havolasini yuboring.")
         return
 
-    filename = None  # ← kerak bo'ladi except blokida ishlatish uchun
+    filename = None
 
     try:
         choice_type, format_id = query.data.split('|')
@@ -210,6 +201,7 @@ async def download_selected_format(query: CallbackQuery):
                 'outtmpl': output_template,
                 'quiet': True,
                 'restrictfilenames': True,
+                'cookies': 'instagram_cookies.txt',  # ← cookie qo‘shildi
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': 'mp3',
@@ -218,19 +210,13 @@ async def download_selected_format(query: CallbackQuery):
             }
         else:
             ydl_opts = {
-        'format': f'{format_id}+bestaudio/best',  # <- muhim o‘zgartirish
-        'outtmpl': output_template,
-        'quiet': True,
-        'restrictfilenames': True,
-        'merge_output_format': 'mp4',  # <- birlashtirilgan fayl turi
-    }
-
-        if choice_type == "audio":
-            ydl_opts['postprocessors'] = [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }]
+                'format': f'{format_id}+bestaudio/best',
+                'outtmpl': output_template,
+                'quiet': True,
+                'restrictfilenames': True,
+                'cookies': 'instagram_cookies.txt',  # ← cookie qo‘shildi
+                'merge_output_format': 'mp4',
+            }
 
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
@@ -254,9 +240,9 @@ async def download_selected_format(query: CallbackQuery):
 
     except Exception as e:
         await query.message.answer("❌ Yuklab olishda xatolik yuz berdi.")
+        print("Yuklab olish xatosi:", e)
 
     finally:
-        # Faylni tozalash
         if filename and os.path.exists(filename):
             try:
                 os.remove(filename)
