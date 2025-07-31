@@ -255,7 +255,7 @@ async def download_selected_format(query: CallbackQuery):
 
     try:
         choice_type, _ = query.data.split('|')
-        await query.message.delete()
+        # await query.message.delete()
         downloading_msg = await query.message.answer("⏳ Yuklab olinmoqda...")
 
         info = video_info_cache[user_id]
