@@ -81,6 +81,8 @@ async def handle_sub_calback(calback:CallbackQuery,state:FSMContext)->None:
     
 @dp.message(F.content_type.in_([ContentType.VIDEO, ContentType.DOCUMENT]))
 async def video_document_handler(message: Message, state: FSMContext, ):
+    if message.chat.type in ["group", "supergroup"]:
+        return
     tg_id = message.from_user.id
 
    # if not await check_user_subscription(tg_id):
